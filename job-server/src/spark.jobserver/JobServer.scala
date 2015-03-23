@@ -52,10 +52,12 @@ object JobServer {
     val jarManager = system.actorOf(Props(classOf[JarManager], jobDAO), "jar-manager")
     val supervisor = system.actorOf(Props(classOf[LocalContextSupervisorActor], jobDAO), "context-supervisor")
     val jobInfo = system.actorOf(Props(classOf[JobInfoActor], jobDAO, supervisor), "job-info")
-    val sparkWebUi = system.actorOf(Props(classOf[SparkWebUiActor]), "spark-web-ui")
+
+    //val sparkWebUi = system.actorOf(Props(classOf[SparkWebUiActor]), "spark-web-ui")
+
     // Create initial contexts
     supervisor ! ContextSupervisor.AddContextsFromConfig
-    new WebApi(system, config, port, jarManager, supervisor, jobInfo, sparkWebUi).start()
+    new WebApi(system, config, port, jarManager, supervisor, jobInfo).start()
   }
 
   def main(args: Array[String]) {
