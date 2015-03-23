@@ -34,7 +34,7 @@ with ScalatestRouteTest with HttpService {
   val dummyActor = system.actorOf(Props(classOf[DummyActor], this))
   val statusActor = system.actorOf(Props(classOf[JobStatusActor], new InMemoryDAO))
 
-  val api = new WebApi(system, config, dummyPort, dummyActor, dummyActor, dummyActor, dummyActor)
+  val api = new WebApi(system, config, dummyPort, dummyActor, dummyActor, dummyActor)
   val routes = api.myRoutes
 
   val dt = DateTime.parse("2013-05-29T00Z")

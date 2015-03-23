@@ -20,7 +20,7 @@ import spray.json.DefaultJsonProtocol._
 import spray.routing.{ HttpService, Route, RequestContext }
 
 class WebApi(system: ActorSystem, config: Config, port: Int,
-             jarManager: ActorRef, supervisor: ActorRef, jobInfo: ActorRef, sparkWebUiActor: ActorRef)
+             jarManager: ActorRef, supervisor: ActorRef, jobInfo: ActorRef) //, sparkWebUiActor: ActorRef)
     extends HttpService with CommonRoutes {
   import CommonMessages._
   import ContextSupervisor._
@@ -44,7 +44,7 @@ class WebApi(system: ActorSystem, config: Config, port: Int,
 
   val logger = LoggerFactory.getLogger(getClass)
 
-  val myRoutes = jarRoutes ~ contextRoutes ~ jobRoutes ~ healthzRoutes ~ sparkHealthzRoutes ~ otherRoutes
+  val myRoutes = jarRoutes ~ contextRoutes ~ jobRoutes ~ healthzRoutes ~ otherRoutes
 
   def start() {
     logger.info("Starting browser web service...")
@@ -147,7 +147,6 @@ class WebApi(system: ActorSystem, config: Config, port: Int,
   /**
    * Routes for getting health status of Spark cluster
    *    GET /sparkHealthz              - return OK or error message
-   */
   def sparkHealthzRoutes: Route = pathPrefix("sparkHealthz") {
     get { ctx =>
       logger.info("Receiving sparkHealthz check request")
@@ -172,6 +171,7 @@ class WebApi(system: ActorSystem, config: Config, port: Int,
       }
     }
   }
+   */
 
   /**
    * Routes for getting health status of job server
