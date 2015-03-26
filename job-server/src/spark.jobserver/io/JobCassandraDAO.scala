@@ -3,7 +3,6 @@
  */
 package spark.jobserver.io
 
-import java.io.{FileOutputStream, BufferedOutputStream, File}
 import java.nio.ByteBuffer
 
 import com.datastax.driver.core.Cluster
@@ -23,9 +22,9 @@ class JobCassandraDAO(config: Config) extends JobDAO {
 
   private val logger = LoggerFactory.getLogger(getClass)
 
-  private val rootDir = getOrElse(config.getString("spark.jobserver.sqldao.rootdir"),
-    "/tmp/spark-jobserver/cassandradao/data")
-  private val rootDirFile = new File(rootDir)
+  private val jarCache = new LocalFileJarCache(getOrElse(
+    config.getString("spark.jobserver.cassandradao.rootdir"),
+    "/tmp/spark-jobserver/cassandradao/data"))
 
   private val keyspace = getOrElse(config.getString(ConfigPrefix + "keyspace"), "jobserver")
   private val datacenter = getOrElse(config.getString(ConfigPrefix + "datacenter"), "Spark")
@@ -47,13 +46,6 @@ class JobCassandraDAO(config: Config) extends JobDAO {
   private val selectJarStatement = session.prepare(SELECT_JAR)
 
   private def init() {
-    // Create the data directory if it doesn't exist
-    if (!rootDirFile.exists()) {
-      if (!rootDirFile.mkdirs()) {
-        throw new RuntimeException("Could not create directory " + rootDir)
-      }
-    }
-
     def schemaInitialized: Boolean = {
       val ks = cluster.getMetadata.getKeyspace(keyspace)
       def tableExists(name: String) = ks.getTable(name) != null
@@ -72,8 +64,7 @@ class JobCassandraDAO(config: Config) extends JobDAO {
   implicit def toDateTime(date: java.util.Date): DateTime = new DateTime(date)
 
   override def saveJar(appName: String, uploadTime: DateTime, jarBytes: Array[Byte]): Unit = {
-    cacheJar(jarFile(appName, uploadTime), jarBytes)
-
+    jarCache.store(appName, uploadTime, jarBytes)
     session.execute(insertJarStatement.bind(appName, uploadTime.toDate, ByteBuffer.wrap(jarBytes)))
     session.execute(insertAppStatement.bind(appName, uploadTime.toDate))
   }
@@ -120,30 +111,11 @@ class JobCassandraDAO(config: Config) extends JobDAO {
   }
 
   def retrieveJarFile(appName: String, uploadTime: DateTime): String = {
-    def loadJar = session.execute(selectJarStatement.bind(appName, uploadTime.toDate)).one
-      .getBytes("jar").array()
-
-    val file = jarFile(appName, uploadTime)
-    if (!file.exists()) {
-      cacheJar(file, loadJar)
-    }
-    file.getAbsolutePath
-
+    jarCache.retrieve(appName, uploadTime, {
+      session.execute(selectJarStatement.bind(appName, uploadTime.toDate)).one
+        .getBytes("jar").array()
+    })
   }
-
-  def cacheJar(outFile: File, jarBytes: Array[Byte]): Unit = {
-    val bos = new BufferedOutputStream(new FileOutputStream(outFile))
-    try {
-      logger.debug("Writing {} bytes to file {}", jarBytes.size, outFile.getPath)
-      bos.write(jarBytes)
-      bos.flush()
-    } finally {
-      bos.close()
-    }
-  }
-
-  private def jarFile(appName: String, uploadTime: DateTime) =
-    new File(rootDir, appName + "-" + uploadTime.toString().replace(':', '_') + ".jar")
 }
 
 object JobCassandraDAO {

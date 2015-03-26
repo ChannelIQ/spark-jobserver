@@ -1,16 +1,19 @@
 package spark.jobserver.io
 
-import com.typesafe.config.{ConfigRenderOptions, Config, ConfigFactory}
-import java.io.{FileOutputStream, BufferedOutputStream, File}
+import java.io.File
 import java.sql.Timestamp
+
+import com.typesafe.config.Config
 import org.joda.time.DateTime
 import org.slf4j.LoggerFactory
+
 import scala.slick.jdbc.meta.MTable
 
 
 class JobSqlDAO(config: Config) extends JobDAO {
+  import spark.jobserver.io.JobDAO._
+
   import scala.slick.driver.H2Driver.simple._
-  import JobDAO._
 
   private val logger = LoggerFactory.getLogger(getClass)
 
@@ -18,6 +21,8 @@ class JobSqlDAO(config: Config) extends JobDAO {
     "/tmp/spark-jobserver/sqldao/data")
   private val rootDirFile = new File(rootDir)
   logger.info("rootDir is " + rootDirFile.getAbsolutePath)
+
+  private val jarCache = new LocalFileJarCache(rootDir)
 
   // Definition of the tables
   class Jars(tag: Tag) extends Table[(Int, String, Timestamp, Array[Byte])](tag, "JARS") {
@@ -61,13 +66,6 @@ class JobSqlDAO(config: Config) extends JobDAO {
   init()
 
   private def init() {
-    // Create the data directory if it doesn't exist
-    if (!rootDirFile.exists()) {
-      if (!rootDirFile.mkdirs()) {
-        throw new RuntimeException("Could not create directory " + rootDir)
-      }
-    }
-
     // Create the tables if they don't exist
     db withSession {
       implicit session =>
@@ -102,7 +100,7 @@ class JobSqlDAO(config: Config) extends JobDAO {
 
   override def saveJar(appName: String, uploadTime: DateTime, jarBytes: Array[Byte]) {
     // The order is important. Save the jar file first and then log it into database.
-    cacheJar(appName, uploadTime, jarBytes)
+    jarCache.store(appName, uploadTime, jarBytes)
 
     // log it into database
     val jarId = insertJarInfo(JarInfo(appName, uploadTime), jarBytes)
@@ -140,32 +138,19 @@ class JobSqlDAO(config: Config) extends JobDAO {
   }
 
   override def retrieveJarFile(appName: String, uploadTime: DateTime): String = {
-    val jarFile = new File(rootDir, createJarName(appName, uploadTime) + ".jar")
-    if (!jarFile.exists()) {
-      fetchAndCacheJarFile(appName, uploadTime)
-    }
-    jarFile.getAbsolutePath
-  }
+    jarCache.retrieve(appName, uploadTime, {
+      db withSession {
+        implicit session =>
 
-  // Fetch the jar file from database and cache it into local file system.
-  private def fetchAndCacheJarFile(appName: String, uploadTime: DateTime) {
-    val jarBytes = fetchJar(appName, uploadTime)
-    cacheJar(appName, uploadTime, jarBytes)
-  }
+          val dateTime = convertDateJodaToSql(uploadTime)
+          val query = jars.filter { jar =>
+            jar.appName === appName && jar.uploadTime === dateTime
+          }.map( _.jar )
 
-  // Fetch the jar from the database
-  private def fetchJar(appName: String, uploadTime: DateTime): Array[Byte] = {
-    db withSession {
-      implicit session =>
-
-        val dateTime = convertDateJodaToSql(uploadTime)
-        val query = jars.filter { jar =>
-          jar.appName === appName && jar.uploadTime === dateTime
-        }.map( _.jar )
-
-        // TODO: check if this list is empty?
-        query.list.head
-    }
+          // TODO: check if this list is empty?
+          query.list.head
+      }
+    })
   }
 
   // Fetch the primary key for a particular jar from the database
@@ -187,21 +172,6 @@ class JobSqlDAO(config: Config) extends JobDAO {
     query.list.head
   }
 
-  // Cache the jar file into local file system.
-  private def cacheJar(appName: String, uploadTime: DateTime, jarBytes: Array[Byte]) {
-    val outFile = new File(rootDir, createJarName(appName, uploadTime) + ".jar")
-    val bos = new BufferedOutputStream(new FileOutputStream(outFile))
-    try {
-      logger.debug("Writing {} bytes to file {}", jarBytes.size, outFile.getPath)
-      bos.write(jarBytes)
-      bos.flush()
-    } finally {
-      bos.close()
-    }
-  }
-
-  private def createJarName(appName: String, uploadTime: DateTime): String = appName + "-" + uploadTime
-
   // Convert from joda DateTime to java.sql.Timestamp
   private def convertDateJodaToSql(dateTime: DateTime): Timestamp =
     new Timestamp(dateTime.getMillis())
@@ -215,7 +185,7 @@ class JobSqlDAO(config: Config) extends JobDAO {
       implicit sessions =>
 
         configs.list.map { case (jobId, jobConfig) =>
-          (jobId -> ConfigFactory.parseString(jobConfig))
+          (jobId -> readJobConfigAsJson(jobConfig))
         }.toMap
     }
   }
@@ -224,7 +194,7 @@ class JobSqlDAO(config: Config) extends JobDAO {
     db withSession {
       implicit sessions =>
 
-        configs += (jobId, jobConfig.root().render(ConfigRenderOptions.concise()))
+        configs += (jobId, serializeJobConfigToJson(jobConfig))
     }
   }
 
@@ -238,7 +208,7 @@ class JobSqlDAO(config: Config) extends JobDAO {
         // Extract out the the JobInfo members and convert any members to appropriate SQL types
         val JobInfo(jobId, contextName, _, classPath, startTime, endTime, error) = jobInfo
         val (start, endOpt, errOpt) = (convertDateJodaToSql(startTime),
-          endTime.map(convertDateJodaToSql(_)),
+          endTime.map(convertDateJodaToSql),
           error.map(_.getMessage))
 
         // When you run a job asynchronously, the same data is written twice with a different
