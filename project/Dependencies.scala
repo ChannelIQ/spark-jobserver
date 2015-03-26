@@ -37,6 +37,11 @@ object Dependencies {
     "com.h2database" % "h2" % "1.3.170"
   )
 
+  lazy val cassandraDaoDeps = Seq(
+    "com.datastax.cassandra" % "cassandra-driver-core" % "2.1.5",
+    "com.google.guava" % "guava" % "14.0.1"
+  )
+
   lazy val logbackDeps = Seq(
     "ch.qos.logback" % "logback-classic" % "1.0.7"
   )
@@ -47,8 +52,6 @@ object Dependencies {
     "io.spray" % "spray-testkit" % "1.2.0" % "test"
   )
 
-
-  lazy val serverDeps = apiDeps ++ yodaDeps
   lazy val apiDeps = sparkDeps :+ typeSafeConfigDeps
 
   val repos = Seq(

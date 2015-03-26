@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import scala.collection.mutable
 
 class JobFileDAO(config: Config) extends JobDAO {
+  import JobDAO._
   private val logger = LoggerFactory.getLogger(getClass)
 
   // appName to its set of upload times. Decreasing times in the seq.

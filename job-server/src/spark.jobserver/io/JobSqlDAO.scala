@@ -10,6 +10,7 @@ import scala.slick.jdbc.meta.MTable
 
 class JobSqlDAO(config: Config) extends JobDAO {
   import scala.slick.driver.H2Driver.simple._
+  import JobDAO._
 
   private val logger = LoggerFactory.getLogger(getClass)
 

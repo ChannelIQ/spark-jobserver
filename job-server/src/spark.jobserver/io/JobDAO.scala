@@ -1,7 +1,10 @@
 package spark.jobserver.io
 
+import java.io.{FileOutputStream, BufferedOutputStream, File}
+
 import com.typesafe.config._
 import org.joda.time.{ Duration, DateTime }
+import org.slf4j.LoggerFactory
 
 // Uniquely identifies the jar used to run a job
 case class JarInfo(appName: String, uploadTime: DateTime)
@@ -82,7 +85,9 @@ trait JobDAO {
    */
   def getLastUploadTime(appName: String): Option[DateTime] =
     getApps.get(appName)
+}
 
+object JobDAO {
   /**
    * A safe API for getting values from Typesafe Config, will return a default if the
    * value is missing.  If the value is badly formatted, error still goes through.
@@ -92,4 +97,50 @@ trait JobDAO {
       case e: ConfigException.Missing => default
     }
   }
+
+  def readJobConfigAsJson(jobConfig: String): Config = {
+    ConfigFactory.parseString(jobConfig)
+  }
+
+  def serializeJobConfigToJson(jobConfig: Config): String = {
+    jobConfig.root().render(ConfigRenderOptions.concise())
+  }
+}
+
+class JarCachingDAO(rootDir: String) {
+
+  private val logger = LoggerFactory.getLogger(getClass)
+
+  val rootDirFile = new File(rootDir)
+  if (!rootDirFile.exists()) {
+    if (!rootDirFile.mkdirs()) {
+      throw new RuntimeException("Could not create directory " + rootDir)
+    }
+  }
+
+  def cacheJar(appName: String, uploadTime: DateTime, jarBytes: Array[Byte]): Unit = {
+    cacheJar(new File(rootDir, jarName(appName, uploadTime)), jarBytes)
+  }
+
+  def cacheJar(outFile: File, jarBytes: Array[Byte]): Unit = {
+    val bos = new BufferedOutputStream(new FileOutputStream(outFile))
+    try {
+      logger.debug("Writing {} bytes to file {}", jarBytes.size, outFile.getPath)
+      bos.write(jarBytes)
+      bos.flush()
+    } finally {
+      bos.close()
+    }
+  }
+
+  def retrieveJarFile(appName: String, uploadTime: DateTime, loadJar: => Array[Byte]): String = {
+    val jarFile = new File(rootDir, jarName(appName, uploadTime))
+    if (!jarFile.exists()) {
+      cacheJar(jarFile, loadJar)
+    }
+    jarFile.getAbsolutePath
+  }
+
+  private def jarName(appName: String, uploadTime: DateTime) =
+    appName + "-" + uploadTime.toString().replace(':', '_') + ".jar"
 }
