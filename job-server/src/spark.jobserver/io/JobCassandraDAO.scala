@@ -27,7 +27,7 @@ class JobCassandraDAO(config: Config) extends JobDAO {
     "/tmp/spark-jobserver/cassandradao/data"))
 
   private val keyspace = getOrElse(config.getString(ConfigPrefix + "keyspace"), "jobserver")
-  private val datacenter = getOrElse(config.getString(ConfigPrefix + "datacenter"), "Spark")
+  private val datacenter = getOrElse(config.getString(ConfigPrefix + "datacenter"), "Analytics")
   private val hosts = getOrElse(config.getString(ConfigPrefix + "hosts"), "127.0.0.1")
 
   private val cluster = Cluster.builder
