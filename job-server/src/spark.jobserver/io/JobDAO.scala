@@ -1,7 +1,7 @@
 package spark.jobserver.io
 
 import com.typesafe.config._
-import org.joda.time.{ Duration, DateTime }
+import org.joda.time.{DateTime, Duration}
 
 // Uniquely identifies the jar used to run a job
 case class JarInfo(appName: String, uploadTime: DateTime)
@@ -82,7 +82,9 @@ trait JobDAO {
    */
   def getLastUploadTime(appName: String): Option[DateTime] =
     getApps.get(appName)
+}
 
+object JobDAO {
   /**
    * A safe API for getting values from Typesafe Config, will return a default if the
    * value is missing.  If the value is badly formatted, error still goes through.
@@ -91,5 +93,13 @@ trait JobDAO {
     try getter catch {
       case e: ConfigException.Missing => default
     }
+  }
+
+  def readJobConfigAsJson(jobConfig: String): Config = {
+    ConfigFactory.parseString(jobConfig)
+  }
+
+  def serializeJobConfigToJson(jobConfig: Config): String = {
+    jobConfig.root().render(ConfigRenderOptions.concise())
   }
 }

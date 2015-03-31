@@ -19,7 +19,7 @@ class JobSqlDAOSpec extends TestJarFinder with FunSpecLike with Matchers with Be
   val jarInfo: JarInfo = genJarInfo(false, false)
   val jarBytes: Array[Byte] = Files.toByteArray(testJar)
   var jarFile: File = new File(config.getString("spark.jobserver.sqldao.rootdir"),
-                               jarInfo.appName + "-" + jarInfo.uploadTime + ".jar")
+                               jarInfo.appName + "-" + jarInfo.uploadTime.toString().replace(':', '_') + ".jar")
 
   // jobInfo test data
   val jobInfoNoEndNoErr:JobInfo = genJobInfo(jarInfo, false, false, false)

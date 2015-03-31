@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory
 import scala.collection.mutable
 
 class JobFileDAO(config: Config) extends JobDAO {
+  import JobDAO._
+
   private val logger = LoggerFactory.getLogger(getClass)
 
   // appName to its set of upload times. Decreasing times in the seq.
@@ -21,6 +23,8 @@ class JobFileDAO(config: Config) extends JobDAO {
   private val rootDirFile = new File(rootDir)
   logger.info("rootDir is " + rootDirFile.getAbsolutePath)
 
+  private val jarCache = new LocalFileJarCache(rootDir)
+
   private val jarsFile = new File(rootDirFile, "jars.data")
   private var jarsOutputStream: DataOutputStream = null
   private val jobsFile = new File(rootDirFile, "jobs.data")
@@ -31,13 +35,6 @@ class JobFileDAO(config: Config) extends JobDAO {
   init()
 
   private def init() {
-    // create the date directory if it doesn't exist
-    if (!rootDirFile.exists()) {
-      if (!rootDirFile.mkdirs()) {
-        throw new RuntimeException("Could not create directory " + rootDir)
-      }
-    }
-
     // read back all apps info during startup
     if (jarsFile.exists()) {
       val in = new DataInputStream(new BufferedInputStream(new FileInputStream(jarsFile)))
@@ -95,15 +92,7 @@ class JobFileDAO(config: Config) extends JobDAO {
 
   override def saveJar(appName: String, uploadTime: DateTime, jarBytes: Array[Byte]) {
     // The order is important. Save the jar file first and then log it into jobsFile.
-    val outFile = new File(rootDir, createJarName(appName, uploadTime) + ".jar")
-    val bos = new BufferedOutputStream(new FileOutputStream(outFile))
-    try {
-      logger.debug("Writing {} bytes to file {}", jarBytes.size, outFile.getPath)
-      bos.write(jarBytes)
-      bos.flush()
-    } finally {
-      bos.close()
-    }
+    jarCache.store(appName, uploadTime, jarBytes)
 
     // log it into jobsFile
     writeJarInfo(jarsOutputStream, JarInfo(appName, uploadTime))
@@ -133,10 +122,7 @@ class JobFileDAO(config: Config) extends JobDAO {
     }.toMap
 
   override def retrieveJarFile(appName: String, uploadTime: DateTime): String =
-    new File(rootDir, createJarName(appName, uploadTime) + ".jar").getAbsolutePath
-
-  private def createJarName(appName: String, uploadTime: DateTime): String =
-    appName + "-" + uploadTime.toString().replace(':', '_')
+    jarCache.jarFile(appName, uploadTime).getAbsolutePath
 
   override def saveJobInfo(jobInfo: JobInfo) {
     writeJobInfo(jobsOutputStream, jobInfo)
